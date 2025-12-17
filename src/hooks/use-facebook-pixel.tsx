@@ -1,0 +1,98 @@
+import { useEffect, useRef } from 'react';
+
+declare global {
+  interface Window {
+    fbq: any;
+    _fbq: any;
+    __fbq_initialized_ids?: Set<string>;
+  }
+}
+
+export const useFacebookPixel = (shouldLoad: boolean = false, pixelIdsOverride?: string | string[]) => {
+  const isLoadedRef = useRef(false);
+
+  useEffect(() => {
+    if (!shouldLoad || isLoadedRef.current) {
+      return;
+    }
+
+    const existingScript = document.querySelector('script[src*="fbevents.js"]');
+    const envIdsRaw = (import.meta as any)?.env?.VITE_FACEBOOK_PIXEL_IDS || '1597639481206943';
+    const pixelIds = ((): string[] => {
+      if (pixelIdsOverride) {
+        const raw = Array.isArray(pixelIdsOverride)
+          ? pixelIdsOverride.join(',')
+          : String(pixelIdsOverride);
+        return raw
+          .split(',')
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0);
+      }
+      return String(envIdsRaw)
+        .split(',')
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0);
+    })();
+
+    const loadFacebookPixel = () => {
+      if (!window.fbq) {
+        (function(f: any, b: any, e: any, v: any, n: any, t: any, s: any) {
+          if (f.fbq) return;
+          n = f.fbq = function() {
+            n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+          };
+          if (!f._fbq) f._fbq = n;
+          n.push = n;
+          n.loaded = true;
+          n.version = '2.0';
+          n.queue = [];
+          t = b.createElement(e);
+          t.async = true;
+          t.src = v;
+          s = b.getElementsByTagName(e)[0];
+          s.parentNode.insertBefore(t, s);
+        })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js', undefined, undefined, undefined);
+      }
+
+      if (!window.__fbq_initialized_ids) {
+        window.__fbq_initialized_ids = new Set<string>();
+      }
+
+      pixelIds.forEach((id) => {
+        if (!window.__fbq_initialized_ids!.has(id)) {
+          window.fbq('init', id);
+          window.__fbq_initialized_ids!.add(id);
+
+          const existingNoscriptForId = document.querySelector(`noscript img[src*="facebook.com/tr?id=${id}"]`);
+          if (!existingNoscriptForId) {
+            const noscript = document.createElement('noscript');
+            const img = document.createElement('img');
+            img.height = 1;
+            img.width = 1;
+            img.style.display = 'none';
+            img.src = `https://www.facebook.com/tr?id=${id}&ev=PageView&noscript=1`;
+            noscript.appendChild(img);
+            document.body.appendChild(noscript);
+          }
+        }
+      });
+
+      window.fbq('track', 'PageView');
+      isLoadedRef.current = true;
+    };
+
+    const timeoutId = setTimeout(loadFacebookPixel, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [shouldLoad, pixelIdsOverride]);
+
+  const trackEvent = (eventName: string, parameters?: any) => {
+    if (window.fbq && isLoadedRef.current) {
+      window.fbq('track', eventName, parameters);
+    }
+  };
+
+  return { trackEvent, isLoaded: isLoadedRef.current };
+};
